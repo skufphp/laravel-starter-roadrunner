@@ -8,8 +8,13 @@ services:
     image: laravel-roadrunner:latest
     pull_policy: never
     restart: unless-stopped
+    environment:
+      APP_KEY: ${APP_KEY}
+      APP_BASE_PATH: ${APP_BASE_PATH}
     working_dir: /var/www/laravel
     command: [ "rr", "serve", "-c", "/var/www/laravel/.rr.yaml" ]
+    ports:
+      - "${APP_PORT:-8050}:8000"
     networks:
       - laravel-roadrunner-network
     depends_on:
@@ -68,6 +73,9 @@ services:
     image: laravel-roadrunner:latest
     pull_policy: never
     restart: unless-stopped
+    environment:
+      APP_KEY: ${APP_KEY}
+      APP_BASE_PATH: ${APP_BASE_PATH}
     working_dir: /var/www/laravel
     command: [ "php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600" ]
     networks:
@@ -89,6 +97,9 @@ services:
     image: laravel-roadrunner:latest
     pull_policy: never
     restart: unless-stopped
+    environment:
+      APP_KEY: ${APP_KEY}
+      APP_BASE_PATH: ${APP_BASE_PATH}
     working_dir: /var/www/laravel
     command: [ "sh", "-c", "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done" ]
     networks:
@@ -104,6 +115,9 @@ services:
     image: laravel-roadrunner:latest
     pull_policy: never
     restart: "no"
+    environment:
+      APP_KEY: ${APP_KEY}
+      APP_BASE_PATH: ${APP_BASE_PATH}
     profiles: [ "migrate" ]
     working_dir: /var/www/laravel
     command: [ "php", "artisan", "migrate", "--force" ]
@@ -120,3 +134,5 @@ volumes:
 networks:
   laravel-roadrunner-network:
     driver: bridge
+
+

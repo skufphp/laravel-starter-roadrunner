@@ -106,6 +106,9 @@ WORKDIR /var/www/laravel
 # Копируем php.ini для продакшена (перезаписываем dev-версию)
 COPY docker/php/php.prod.ini /usr/local/etc/php/conf.d/local.ini
 
+# Явно копируем конфиг RoadRunner: если файла нет в git-контексте, build должен упасть сразу
+COPY .rr.yaml /var/www/laravel/.rr.yaml
+
 # Копируем composer-файлы отдельно для кеширования слоя vendor
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts --no-progress
@@ -113,17 +116,16 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --no-script
 # Копируем весь проект
 COPY . ./
 
+# Удаляем public/hot, чтобы отключить Vite dev-server режим в production
+RUN rm -f public/hot
+
 # Копируем собранные ассеты из frontend-build
 COPY --from=frontend-build /app/public/build /var/www/laravel/public/build
 
-# Финализация composer (post-install scripts)
-RUN composer dump-autoload --optimize --no-dev
-
-# Кешируем конфигурацию, маршруты и представления Laravel
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache \
-    && php artisan event:cache
+# 1. Удаляем dev-кеши, скопированные с хоста
+# 2. Доустанавливаем зависимости без dev + с запуском post-scripts (package:discover)
+RUN rm -rf bootstrap/cache/*.php \
+    && composer install --no-dev --optimize-autoloader --no-interaction --no-progress
 
 # Назначаем права и переключаемся на www-data
 RUN chown -R www-data:www-data /var/www/laravel
