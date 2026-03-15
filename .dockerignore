@@ -6,10 +6,12 @@
 .git
 .gitignore
 .gitattributes
+.github/
 
 # IDE
 .idea/
 .vscode/
+.editorconfig
 
 # Docker (не нужны внутри образа)
 docker-compose*.yml
@@ -29,13 +31,17 @@ LICENSE
 # Node.js (собирается в отдельном stage)
 node_modules/
 
+# PHP зависимости (устанавливаются внутри образа через composer install)
+vendor/
+
 # Тесты
 tests/
 phpunit.xml
 .phpunit.result.cache
 
 # Кеши и логи
-storage/logs/*
+storage/logs/
+storage/app/
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
@@ -43,6 +49,9 @@ storage/framework/views/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Vite dev-server флаг (не нужен в production)
+public/hot
 
 # Кеши Laravel (могут содержать dev-зависимости)
 bootstrap/cache/*.php
