@@ -73,6 +73,8 @@ services:
     image: laravel-roadrunner:latest
     pull_policy: never
     restart: unless-stopped
+    env_file:
+      - .env.production
     environment:
       APP_KEY: ${APP_KEY}
       APP_BASE_PATH: ${APP_BASE_PATH}
@@ -97,6 +99,8 @@ services:
     image: laravel-roadrunner:latest
     pull_policy: never
     restart: unless-stopped
+    env_file:
+      - .env.production
     environment:
       APP_KEY: ${APP_KEY}
       APP_BASE_PATH: ${APP_BASE_PATH}
@@ -117,5 +121,4 @@ volumes:
 networks:
   laravel-roadrunner-network:
     driver: bridge
-
 
