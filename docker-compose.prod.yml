@@ -99,20 +99,6 @@ services:
       laravel-redis-rr:
         condition: service_healthy
 
-  # Сервис для автоматического запуска миграций при деплое
-  migrate:
-    image: laravel-roadrunner:latest
-    pull_policy: never
-    restart: "no"
-    profiles: [ "migrate" ]
-    working_dir: /var/www/laravel
-    command: [ "php", "artisan", "migrate", "--force" ]
-    depends_on:
-      laravel-postgres-rr:
-        condition: service_healthy
-    networks:
-      - laravel-roadrunner-network
-
 volumes:
   postgres-data:
   redis-data:
