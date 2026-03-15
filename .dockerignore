@@ -43,3 +43,6 @@ storage/framework/views/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Кеши Laravel (могут содержать dev-зависимости)
+bootstrap/cache/*.php

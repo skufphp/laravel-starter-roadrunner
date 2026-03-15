@@ -5,16 +5,25 @@ services:
       context: .
       dockerfile: docker/php.Dockerfile
       target: php-base
-    container_name: laravel-roadrunner
+      args:
+        INSTALL_XDEBUG: "true"
     restart: unless-stopped
     working_dir: /var/www/laravel
+    volumes:
+      - .:/var/www/laravel
+    ports:
+      - "${APP_PORT:-8050}:8000"
     environment:
+      APP_BASE_PATH: ${APP_BASE_PATH:-/var/www/laravel}
       XDEBUG_MODE: ${XDEBUG_MODE:-off}
       XDEBUG_START: ${XDEBUG_START:-no}
       XDEBUG_CLIENT_HOST: ${XDEBUG_CLIENT_HOST:-host.docker.internal}
-      APP_BASE_PATH: ${APP_BASE_PATH:-/var/www/laravel}
+      RR_HTTP_NUM_WORKERS: 2
+      RR_LOG_LEVEL: "debug"
     networks:
       - laravel-roadrunner-network
+    depends_on:
+      - laravel-node-rr
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:2114/health?plugin=http" ]
       interval: 10s
@@ -22,21 +31,46 @@ services:
       retries: 5
       start_period: 15s
 
+  # Node.js для сборки фронтенда и Hot Module Replacement (HMR)
+  laravel-node-rr:
+    image: node:24-alpine
+    working_dir: /var/www/laravel
+    volumes:
+      - .:/var/www/laravel
+      - node_modules:/var/www/laravel/node_modules
+    command: >
+      sh -lc '
+        # Установка зависимостей, если они отсутствуют
+        if [ -f package-lock.json ]; then
+          npm ci;
+        else
+          npm install;
+        fi;
+      
+        # Запуск Vite в режиме разработки
+        npm run dev -- --host 0.0.0.0 --port 5173
+      '
+    ports:
+      - "5173:5173"
+    networks:
+      - laravel-roadrunner-network
+
   # База данных PostgreSQL
   laravel-postgres-rr:
     image: postgres:18.2-alpine
-    container_name: laravel-postgres-rr
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
+    ports:
+      - "${DB_FORWARD_PORT:-5432}:5432"
     networks:
       - laravel-roadrunner-network
     healthcheck:
-      test: [ "CMD", "pg_isready" ]
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -45,11 +79,12 @@ services:
   # Хранилище данных Redis
   laravel-redis-rr:
     image: redis:8.6-alpine
-    container_name: laravel-redis-rr
     restart: unless-stopped
     command: [ "redis-server", "--appendonly", "yes" ]
     volumes:
       - redis-data:/data
+    ports:
+      - "${REDIS_FORWARD_PORT:-6379}:6379"
     networks:
       - laravel-roadrunner-network
     healthcheck:
@@ -59,9 +94,31 @@ services:
       retries: 5
       start_period: 10s
 
+  # Только для разработки: интерфейс управления БД (pgAdmin)
+  laravel-pgadmin-rr:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    networks:
+      - laravel-roadrunner-network
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost/" ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      laravel-postgres-rr:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:
+  node_modules:
 
 networks:
   laravel-roadrunner-network:
