@@ -53,6 +53,9 @@
 
 ```bash
 composer create-project laravel/laravel my-app
+```
+
+```bash
 cd my-app
 ```
 
@@ -60,6 +63,9 @@ cd my-app
 
 ```bash
 composer require laravel/octane
+```
+
+```bash
 php artisan octane:install --server=roadrunner
 ```
 
@@ -70,10 +76,11 @@ php artisan octane:install --server=roadrunner
 Скопируйте следующие файлы и папки из данного boilerplate в корень вашего нового проекта Laravel:
 
 * Папку `docker/` (включая все подпапки и файлы)
-* Файлы `docker-compose.yml`, `docker-compose.dev.yml`, `docker-compose.prod.yml`
+* Файлы `docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.prod.local.yml`
 * Файл `Makefile`
 * Файл `.rr.yaml`
 * Файл `.dockerignore`
+* Файл `.env.production.example`
 
 ### 4. Настройка окружения (.env)
 
@@ -90,12 +97,17 @@ DB_USERNAME=postgres
 DB_PASSWORD=root
 ```
 
-**b) Настройте Redis:**
+**b) Настройте Redis и драйверы Laravel (обязательно для этого boilerplate):**
 
 ```dotenv
+REDIS_CLIENT=phpredis
 REDIS_HOST=laravel-redis-rr
 REDIS_PORT=6379
 REDIS_PASSWORD=
+
+SESSION_DRIVER=redis
+CACHE_STORE=redis
+QUEUE_CONNECTION=redis
 ```
 
 **c) Настройте Octane:**
@@ -180,37 +192,25 @@ make up
 
 ## 🏭 Развертывание на Production
 
-### Архитектура Production
+Этот boilerplate рассчитан на деплой через **Coolify**.
 
-В продакшене используется **production stage** из Dockerfile — образ содержит весь код, vendor и собранные ассеты. Никаких volume-монтирований.
+### Настройка `.env.production`
 
-Дополнительные сервисы:
-- **Queue Worker** — обработка очередей Laravel
-- **Scheduler** — планировщик задач (замена cron)
-- **Migrate** — одноразовый контейнер для миграций при деплое
-
-### 1. Сборка Production-образа
+Создайте production-файл из шаблона:
 
 ```bash
-# Сборка образа с тегом
-docker build \
-  -f docker/php.Dockerfile \
-  --target production \
-  -t your-registry.com/app:latest \
-  .
-
-# Пуш в registry
-docker push your-registry.com/app:latest
+cp .env.production.example .env.production
 ```
 
-### 2. Настройка Production .env
+Проверьте и заполните в `.env.production` production-значения:
 
 ```dotenv
 APP_ENV=production
 APP_DEBUG=false
+APP_KEY=base64:your-generated-key
 APP_URL=https://your-domain.com
+APP_BASE_PATH=/var/www/laravel
 
-# БД
 DB_CONNECTION=pgsql
 DB_HOST=laravel-postgres-rr
 DB_PORT=5432
@@ -218,102 +218,35 @@ DB_DATABASE=your_db
 DB_USERNAME=your_user
 DB_PASSWORD=<strong_password>
 
-# Redis
+REDIS_CLIENT=phpredis
 REDIS_HOST=laravel-redis-rr
 REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# Octane
+SESSION_DRIVER=redis
+CACHE_STORE=redis
+QUEUE_CONNECTION=redis
+
 OCTANE_SERVER=roadrunner
-
-# RoadRunner
 RR_HTTP_NUM_WORKERS=8
 RR_LOG_LEVEL=warn
-
-# Registry (для docker-compose.prod.yml)
-CI_REGISTRY_IMAGE=your-registry.com
-IMAGE_TAG=latest
 ```
 
-### 3. Запуск на сервере
+`APP_DEBUG=false` обязателен для production.  
+`.env.production` не должен попадать в Git.
 
-```bash
-# Скопируйте на сервер:
-# - docker-compose.yml
-# - docker-compose.prod.yml
-# - .env (с production-настройками)
+### Деплой в Coolify
 
-# Запуск
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+После создания проекта в Coolify:
 
-# Миграции выполнятся автоматически через сервис migrate
-```
-
-### 4. Production Checklist
-
-- [ ] `APP_ENV=production`, `APP_DEBUG=false`
-- [ ] Сильные пароли для БД и Redis
-- [ ] `RR_HTTP_NUM_WORKERS` = количество ядер CPU
-- [ ] `RR_LOG_LEVEL=warn` (не debug!)
-- [ ] HTTPS терминируется на reverse proxy (Traefik, Caddy, Nginx) перед RoadRunner
-- [ ] Health check настроен: `http://app:2114/health?plugin=http`
-- [ ] Queue worker и Scheduler запущены
-- [ ] Мониторинг: раскомментируйте секцию `metrics` в `.rr.yaml` для Prometheus
-- [ ] Бэкапы PostgreSQL настроены
-- [ ] `.env` файл **не** в Git, передаётся через CI/CD secrets
-
-### 5. CI/CD (GitLab CI пример)
-
-```yaml
-stages:
-  - build
-  - deploy
-
-build:
-  stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker build -f docker/php.Dockerfile --target production -t $CI_REGISTRY_IMAGE/app:$CI_COMMIT_SHA .
-    - docker push $CI_REGISTRY_IMAGE/app:$CI_COMMIT_SHA
-
-deploy:
-  stage: deploy
-  script:
-    - ssh deploy@server "cd /app && IMAGE_TAG=$CI_COMMIT_SHA docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d"
-```
-
-### 6. Reverse Proxy (HTTPS)
-
-RoadRunner слушает на порту 8000 (HTTP). Для HTTPS используйте reverse proxy перед ним.
-
-**Пример с Caddy (рекомендуется — автоматический HTTPS):**
-
-```
-your-domain.com {
-    reverse_proxy laravel-roadrunner:8000
-}
-```
-
-**Пример с Nginx:**
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-
-    ssl_certificate /etc/ssl/cert.pem;
-    ssl_certificate_key /etc/ssl/key.pem;
-
-    location / {
-        proxy_pass http://laravel-roadrunner:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
+1. Откройте `Environment Variables`.
+2. Скопируйте **все** переменные из `.env.production` в обе секции:
+   - `Production Environment Variables`
+   - `Preview Deployments Environment Variables`
+3. В `Preview Deployments Environment Variables` измените переменные БД (например, добавьте префикс к имени БД), чтобы preview не затрагивал production-базу.
+4. Откройте вкладку `General`:
+   - в поле `Post-deployment` укажите `php artisan migrate --force && php artisan optimize:clear`
+   - в поле сервиса рядом укажите имя app-сервиса: `laravel-roadrunner`.
 
 ---
 
@@ -324,13 +257,16 @@ server {
 | `make help` | Показать справку |
 | `make setup` | Полная инициализация проекта |
 | `make up` | Запустить контейнеры (dev) |
-| `make up-prod` | Запустить контейнеры (prod) |
+| `make up-prod` | Запустить контейнеры (prod local, из `.env.production`) |
 | `make down` | Остановить контейнеры |
+| `make down-prod` | Остановить контейнеры (prod local) |
 | `make restart` | Перезапустить контейнеры |
 | `make build` | Собрать образы |
 | `make rebuild` | Пересобрать без кэша |
 | `make logs` | Логи всех сервисов |
 | `make logs-app` | Логи RoadRunner |
+| `make logs-queue` | Логи queue worker (prod local) |
+| `make logs-scheduler` | Логи scheduler (prod local) |
 | `make status` | Статус контейнеров |
 | `make shell` | Войти в контейнер приложения |
 | `make shell-postgres` | PostgreSQL CLI |

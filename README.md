@@ -47,11 +47,12 @@ Boilerplate для быстрого развертывания **Laravel Octane*
 │       ├── php.ini             # Настройки PHP для разработки
 │       └── php.prod.ini        # Настройки PHP для продакшена
 ├── .rr.yaml                    # Конфигурация RoadRunner
-├── docker-compose.yml          # Базовые сервисы (app, postgres, redis)
-├── docker-compose.dev.yml      # Оверлей для разработки (volumes, xdebug, pgadmin, node)
-├── docker-compose.prod.yml     # Оверлей для продакшена (queue, scheduler, migrate)
+├── docker-compose.yml          # Разработка (app, node, postgres, redis, pgadmin)
+├── docker-compose.prod.yml     # Продакшен-стек (app, postgres, redis, queue, scheduler)
+├── docker-compose.prod.local.yml # Локальный запуск production-стека через .env.production
 ├── .dockerignore               # Исключения из контекста сборки
 ├── .env.docker                 # Шаблон переменных окружения для Docker
+├── .env.production.example     # Шаблон переменных для production/локального prod-запуска
 ├── Makefile                    # Команды управления проектом
 └── SETUP.md                    # Подробная инструкция по установке
 ```
@@ -68,9 +69,14 @@ composer require laravel/octane
 php artisan octane:install --server=roadrunner
 
 # 3. Скопируйте файлы boilerplate в проект
-# (docker/, docker-compose*.yml, Makefile, .rr.yaml, .dockerignore)
+# (docker/, docker-compose*.yml, Makefile, .rr.yaml, .dockerignore, .env.production.example)
 
 # 4. Настройте .env (см. SETUP.md)
+# Важно для Redis:
+# SESSION_DRIVER=redis
+# CACHE_STORE=redis
+# QUEUE_CONNECTION=redis
+# REDIS_CLIENT=phpredis
 
 # 5. Запустите
 make setup
@@ -78,14 +84,31 @@ make setup
 
 Подробная инструкция — в файле **[SETUP.md](SETUP.md)**.
 
+## Локальный запуск production-стека
+
+```bash
+cp .env.production.example .env.production
+make up-prod
+```
+
+`make up-prod` использует `--env-file .env.production` и `docker-compose.prod.local.yml`.
+
+## Coolify
+
+Пошаговый деплой для Coolify описан в **[SETUP.md](SETUP.md)** (раздел `Развертывание в Coolify`): перенос всех переменных из `.env.production` в `Production` и `Preview` секции, изоляция preview-БД и `Post-deployment` команда для миграций.
+
 ## Основные команды
 
 | Команда                  | Описание                         |
 |--------------------------|----------------------------------|
 | `make setup`             | Полная инициализация проекта     |
 | `make up`                | Запустить контейнеры (dev)       |
+| `make up-prod`           | Запустить контейнеры (prod local)|
 | `make down`              | Остановить контейнеры            |
+| `make down-prod`         | Остановить контейнеры (prod local)|
 | `make logs-app`          | Логи RoadRunner                  |
+| `make logs-queue`        | Логи queue worker (prod local)   |
+| `make logs-scheduler`    | Логи scheduler (prod local)      |
 | `make shell`             | Войти в контейнер                |
 | `make rr-reload`         | Перезагрузить воркеры RoadRunner |
 | `make rr-workers`        | Статус воркеров                  |
