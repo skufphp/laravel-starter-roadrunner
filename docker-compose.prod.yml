@@ -69,7 +69,7 @@ services:
     pull_policy: never
     restart: unless-stopped
     working_dir: /var/www/laravel
-    command: [ "php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600" ]
+    command: [ "php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600", "--memory=256", "--max-jobs=1000" ]
     networks:
       - laravel-roadrunner-network
     depends_on:
@@ -78,7 +78,7 @@ services:
       laravel-redis-rr:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep 'queue:work' || exit 1" ]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep 'queue:work' >/dev/null || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
