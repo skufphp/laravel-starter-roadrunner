@@ -113,6 +113,12 @@ services:
         condition: service_healthy
       laravel-redis-rr:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep 'schedule:run --verbose --no-interaction' || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres-data:
@@ -121,4 +127,3 @@ volumes:
 networks:
   laravel-roadrunner-network:
     driver: bridge
-

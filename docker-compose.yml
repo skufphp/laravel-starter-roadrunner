@@ -7,6 +7,8 @@ services:
       target: development
       args:
         INSTALL_XDEBUG: "true"
+    image: laravel-roadrunner:dev
+    pull_policy: never
     restart: unless-stopped
     working_dir: /var/www/laravel
     volumes:
@@ -96,12 +98,8 @@ services:
 
   # Queue Worker — обработка очередей Laravel (dev)
   laravel-queue-rr:
-    build:
-      context: .
-      dockerfile: docker/php.Dockerfile
-      target: development
-      args:
-        INSTALL_XDEBUG: "true"
+    image: laravel-roadrunner:dev
+    pull_policy: never
     restart: unless-stopped
     working_dir: /var/www/laravel
     volumes:
@@ -114,15 +112,17 @@ services:
         condition: service_healthy
       laravel-redis-rr:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep 'queue:work' || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # Scheduler — планировщик задач Laravel (dev)
   laravel-scheduler-rr:
-    build:
-      context: .
-      dockerfile: docker/php.Dockerfile
-      target: development
-      args:
-        INSTALL_XDEBUG: "true"
+    image: laravel-roadrunner:dev
+    pull_policy: never
     restart: unless-stopped
     working_dir: /var/www/laravel
     volumes:
@@ -135,6 +135,12 @@ services:
         condition: service_healthy
       laravel-redis-rr:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep 'schedule:run --verbose --no-interaction' || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # Только для разработки: интерфейс управления БД (pgAdmin)
   laravel-pgadmin-rr:
