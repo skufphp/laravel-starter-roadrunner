@@ -1,3 +1,48 @@
+x-laravel-env: &laravel-env
+  APP_NAME: ${APP_NAME}
+  APP_ENV: ${APP_ENV}
+  APP_DEBUG: ${APP_DEBUG}
+  APP_KEY: ${APP_KEY}
+  APP_URL: ${APP_URL}
+  APP_BASE_PATH: ${APP_BASE_PATH}
+  APP_LOCALE: ${APP_LOCALE}
+  APP_FALLBACK_LOCALE: ${APP_FALLBACK_LOCALE}
+  APP_FAKER_LOCALE: ${APP_FAKER_LOCALE}
+
+  APP_PORT: ${APP_PORT}
+
+  LOG_CHANNEL: ${LOG_CHANNEL}
+  LOG_STACK: ${LOG_STACK}
+  LOG_LEVEL: ${LOG_LEVEL}
+
+  DB_CONNECTION: ${DB_CONNECTION}
+  DB_HOST: ${DB_HOST}
+  DB_PORT: ${DB_PORT}
+  DB_DATABASE: ${DB_DATABASE}
+  DB_USERNAME: ${DB_USERNAME}
+  DB_PASSWORD: ${DB_PASSWORD}
+
+  SESSION_DRIVER: ${SESSION_DRIVER}
+  SESSION_LIFETIME: ${SESSION_LIFETIME}
+  SESSION_ENCRYPT: ${SESSION_ENCRYPT}
+  SESSION_PATH: ${SESSION_PATH}
+  SESSION_DOMAIN: ${SESSION_DOMAIN}
+
+  CACHE_STORE: ${CACHE_STORE}
+  QUEUE_CONNECTION: ${QUEUE_CONNECTION}
+  BROADCAST_CONNECTION: ${BROADCAST_CONNECTION}
+  FILESYSTEM_DISK: ${FILESYSTEM_DISK}
+
+  REDIS_CLIENT: ${REDIS_CLIENT}
+  REDIS_HOST: ${REDIS_HOST}
+  REDIS_PORT: ${REDIS_PORT}
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  OCTANE_SERVER: ${OCTANE_SERVER}
+  RR_HTTP_NUM_WORKERS: ${RR_HTTP_NUM_WORKERS}
+  RR_HTTP_MAX_JOBS: ${RR_HTTP_MAX_JOBS}
+  RR_LOG_LEVEL: ${RR_LOG_LEVEL}
+
 services:
   # Настройки RoadRunner для Production
   laravel-roadrunner:
@@ -6,13 +51,17 @@ services:
       dockerfile: docker/php.Dockerfile
       target: production
     image: laravel-roadrunner:latest
-    pull_policy: never
+    container_name: laravel-roadrunner
     restart: unless-stopped
     environment:
-      APP_KEY: ${APP_KEY}
-      APP_BASE_PATH: ${APP_BASE_PATH}
+      <<: *laravel-env
     working_dir: /var/www/laravel
-    command: [ "rr", "serve", "-c", "/var/www/laravel/.rr.yaml" ]
+    command: >
+      sh -c "
+        php artisan migrate --force &&
+        php artisan optimize:clear &&
+        rr serve -c /var/www/laravel/.rr.yaml -w /var/www/laravel
+      "
     ports:
       - "${APP_PORT:-8050}:8000"
     networks:
@@ -36,6 +85,7 @@ services:
   # База данных PostgreSQL
   laravel-postgres-rr:
     image: postgres:18.2-alpine
+    container_name: laravel-postgres-rr
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE}
@@ -55,6 +105,7 @@ services:
   # Хранилище данных Redis
   laravel-redis-rr:
     image: redis:8.6-alpine
+    container_name: laravel-redis-rr
     restart: unless-stopped
     command: [ "redis-server", "--appendonly", "yes" ]
     volumes:
@@ -71,15 +122,13 @@ services:
   # Queue Worker — обработка очередей Laravel
   laravel-queue-rr:
     image: laravel-roadrunner:latest
+    container_name: laravel-queue-rr
     pull_policy: never
     restart: unless-stopped
-    env_file:
-      - .env.production
     environment:
-      APP_KEY: ${APP_KEY}
-      APP_BASE_PATH: ${APP_BASE_PATH}
+      <<: *laravel-env
     working_dir: /var/www/laravel
-    command: [ "php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600" ]
+    command: [ "php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600", "--memory=256", "--max-jobs=1000" ]
     networks:
       - laravel-roadrunner-network
     depends_on:
@@ -97,13 +146,11 @@ services:
   # Scheduler — планировщик задач Laravel (cron)
   laravel-scheduler-rr:
     image: laravel-roadrunner:latest
+    container_name: laravel-scheduler-rr
     pull_policy: never
     restart: unless-stopped
-    env_file:
-      - .env.production
     environment:
-      APP_KEY: ${APP_KEY}
-      APP_BASE_PATH: ${APP_BASE_PATH}
+      <<: *laravel-env
     working_dir: /var/www/laravel
     command: [ "sh", "-c", "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done" ]
     networks:
@@ -113,12 +160,6 @@ services:
         condition: service_healthy
       laravel-redis-rr:
         condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep 'schedule:run --verbose --no-interaction' || exit 1" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
 
 volumes:
   postgres-data:
