@@ -21,7 +21,7 @@ GREEN=\033[0;32m
 RED=\033[0;31m
 NC=\033[0m
 
-# Переменные Compose (используем merge для разработки)
+# Переменные Compose
 COMPOSE = docker compose -f docker-compose.yml
 COMPOSE_PROD = docker compose --env-file .env.production -f docker-compose.prod.local.yml
 
