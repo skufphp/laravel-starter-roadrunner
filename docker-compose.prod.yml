@@ -53,6 +53,8 @@ services:
     image: laravel-roadrunner:latest
     container_name: laravel-roadrunner
     restart: unless-stopped
+    environment:
+      <<: *laravel-env
     working_dir: /var/www/laravel
     command: >
       sh -c "
