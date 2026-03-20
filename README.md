@@ -93,9 +93,9 @@ make up-prod
 
 `make up-prod` использует `--env-file .env.production` и `docker-compose.prod.local.yml`.
 
-## Coolify
+## Dokploy
 
-Пошаговый деплой для Coolify описан в **[SETUP.md](SETUP.md)** (раздел `Развертывание в Coolify`): перенос всех переменных из `.env.production` в `Production` и `Preview` секции, изоляция preview-БД и `Post-deployment` команда для миграций.
+Пошаговый деплой для Dokploy описан в **[SETUP.md](SETUP.md)** (раздел `Развертывание в Dokploy`): перенос всех переменных из `.env.production` в секцию `Environment -> Environment Settings`, изоляция preview-БД и `Post-deployment` команда для миграций.
 
 ## Основные команды
 

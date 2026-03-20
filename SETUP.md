@@ -192,7 +192,7 @@ make up
 
 ## 🏭 Развертывание на Production
 
-Этот boilerplate рассчитан на деплой через **Coolify**.
+Этот boilerplate рассчитан на деплой через **Dokploy**.
 
 ### Настройка `.env.production`
 
@@ -235,18 +235,15 @@ RR_LOG_LEVEL=warn
 `APP_DEBUG=false` обязателен для production.  
 `.env.production` не должен попадать в Git.
 
-### Деплой в Coolify
+### Деплой в Dokploy
 
-После создания проекта в Coolify:
+После создания проекта в Dokploy:
 
-1. Откройте `Environment Variables`.
-2. Скопируйте **все** переменные из `.env.production` в обе секции:
-   - `Production Environment Variables`
-   - `Preview Deployments Environment Variables`
-3. В `Preview Deployments Environment Variables` измените переменные БД (например, добавьте префикс к имени БД), чтобы preview не затрагивал production-базу.
-4. Откройте вкладку `General`:
-   - в поле `Post-deployment` укажите `php artisan migrate --force && php artisan optimize:clear`
-   - в поле сервиса рядом укажите имя app-сервиса: `laravel-roadrunner`.
+1. Откройте вкладку **Environment** -> **Environment Settings**.
+2. Добавьте все необходимые переменные из `.env.production`.
+3. В настройках сервиса укажите:
+   - В поле **Post-deployment** (или аналогичном): `php artisan migrate --force && php artisan optimize:clear`.
+   - Проверьте имя приложения и сервисов в соответствии с `docker-compose.prod.yml`.
 
 ---
 
