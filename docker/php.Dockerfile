@@ -49,19 +49,15 @@ RUN set -eux; \
 RUN set -eux; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
-      pdo \
       pdo_pgsql \
       pgsql \
-      mbstring \
-      xml \
       gd \
       bcmath \
       zip \
       intl \
       sockets \
       pcntl; \
-    pie install phpredis/phpredis; \
-    docker-php-ext-enable redis
+    pie install phpredis/phpredis
 
 # Очистка временных файлов
 RUN set -eux; \
@@ -95,8 +91,12 @@ FROM php-base AS development
 ARG INSTALL_XDEBUG=false
 RUN set -eux; \
     if [ "${INSTALL_XDEBUG}" = "true" ]; then \
+      apk add --no-cache --virtual .xdebug-build-deps \
+        $PHPIZE_DEPS \
+        linux-headers; \
       pie install xdebug/xdebug; \
       docker-php-ext-enable xdebug; \
+      apk del .xdebug-build-deps; \
     fi
 
 # Конфигурация php.ini для разработки
