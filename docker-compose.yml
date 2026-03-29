@@ -25,8 +25,6 @@ services:
       RR_LOG_LEVEL: ${RR_LOG_LEVEL:-debug}
     networks:
       - laravel-roadrunner-network
-    depends_on:
-      - laravel-node-rr
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:2114/health?plugin=http" ]
       interval: 10s
@@ -116,6 +114,8 @@ services:
     networks:
       - laravel-roadrunner-network
     depends_on:
+      laravel-roadrunner:
+        condition: service_started
       laravel-postgres-rr:
         condition: service_healthy
       laravel-redis-rr:
@@ -136,10 +136,12 @@ services:
     working_dir: /var/www/laravel
     volumes:
       - .:/var/www/laravel
-    command: [ "sh", "-c", "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done" ]
+    command: [ "php", "artisan", "schedule:work" ]
     networks:
       - laravel-roadrunner-network
     depends_on:
+      laravel-roadrunner:
+        condition: service_started
       laravel-postgres-rr:
         condition: service_healthy
       laravel-redis-rr:

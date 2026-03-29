@@ -10,8 +10,8 @@
 	setup install-deps \
 	composer-install composer-update composer-require \
 	npm-install npm-dev npm-build \
-	artisan composer migrate rollback fresh tinker test-php \
-	rr-reload rr-workers \
+	artisan composer migrate rollback fresh tinker test-php test-coverage \
+	rr-reload rr-health rr-status \
 	permissions info validate \
 	clean clean-all dev-reset clean-prod clean-all-prod prod-reset
 
@@ -29,6 +29,9 @@ APP_PORT := $(shell grep '^APP_PORT=' .env 2>/dev/null | cut -d '=' -f 2- | tr -
 ifeq ($(APP_PORT),)
 APP_PORT := 8050
 endif
+
+# Общий URL для проверки состояния RoadRunner в rr-status и rr-health
+RR_HEALTH_URL := http://localhost:2114/health
 
 # Сервисы (имена сервисов из compose-файлов)
 APP_SERVICE=laravel-roadrunner
@@ -169,11 +172,21 @@ shell-postgres-prod: ## Подключиться к PostgreSQL CLI (Prod)
 
 shell-redis: ## Подключиться к Redis CLI
 	@echo "$(YELLOW)Подключение к Redis...$(NC)"
-	$(COMPOSE) exec $(REDIS_SERVICE) redis-cli ping
+	@REDIS_PASSWORD=$$(grep '^REDIS_PASSWORD=' .env 2>/dev/null | cut -d '=' -f 2- | tr -d '[:space:]'); \
+	if [ -n "$$REDIS_PASSWORD" ]; then \
+		$(COMPOSE) exec $(REDIS_SERVICE) redis-cli -a "$$REDIS_PASSWORD" ping; \
+	else \
+		$(COMPOSE) exec $(REDIS_SERVICE) redis-cli ping; \
+	fi
 
 shell-redis-prod: ## Подключиться к Redis CLI (Prod)
 	@echo "$(YELLOW)Подключение к Redis (Prod)...$(NC)"
-	$(COMPOSE_PROD) exec $(REDIS_SERVICE) redis-cli ping
+	@REDIS_PASSWORD=$$(grep '^REDIS_PASSWORD=' .env.production 2>/dev/null | cut -d '=' -f 2- | tr -d '[:space:]'); \
+	if [ -n "$$REDIS_PASSWORD" ]; then \
+		$(COMPOSE_PROD) exec $(REDIS_SERVICE) redis-cli -a "$$REDIS_PASSWORD" ping; \
+	else \
+		$(COMPOSE_PROD) exec $(REDIS_SERVICE) redis-cli ping; \
+	fi
 
 # --- Команды Laravel ---
 
@@ -183,7 +196,12 @@ setup: ## Полная инициализация проекта с нуля
 	@echo "$(YELLOW)Ожидание готовности PostgreSQL...$(NC)"
 	@$(COMPOSE) exec $(POSTGRES_SERVICE) sh -c 'until pg_isready; do sleep 1; done'
 	@echo "$(YELLOW)Ожидание готовности Redis...$(NC)"
-	@$(COMPOSE) exec $(REDIS_SERVICE) sh -c 'until redis-cli ping | grep -q PONG; do sleep 1; done'
+	@REDIS_PASSWORD=$$(grep '^REDIS_PASSWORD=' .env 2>/dev/null | cut -d '=' -f 2- | tr -d '[:space:]'); \
+	if [ -n "$$REDIS_PASSWORD" ]; then \
+		$(COMPOSE) exec $(REDIS_SERVICE) sh -c "until redis-cli -a '$$REDIS_PASSWORD' ping | grep -q PONG; do sleep 1; done"; \
+	else \
+		$(COMPOSE) exec $(REDIS_SERVICE) sh -c 'until redis-cli ping | grep -q PONG; do sleep 1; done'; \
+	fi
 	@make install-deps
 	@make artisan CMD="key:generate"
 	@make migrate
@@ -206,6 +224,11 @@ composer-update: ## Обновить зависимости через Composer
 composer-require: ## Установить пакет через Composer (make composer-require PACKAGE=vendor/package)
 	$(COMPOSE) exec $(APP_SERVICE) composer require $(PACKAGE)
 
+composer: ## Запустить команду composer (make composer CMD="install")
+	$(COMPOSE) exec $(APP_SERVICE) composer $(CMD)
+
+# --- Команды NPM ---
+
 npm-install: ## Установить NPM зависимости
 	$(COMPOSE) exec $(NODE_SERVICE) npm install
 
@@ -219,9 +242,6 @@ npm-build: ## Собрать фронтенд
 
 artisan: ## Запустить команду artisan (make artisan CMD="migrate")
 	$(COMPOSE) exec $(APP_SERVICE) php artisan $(CMD)
-
-composer: ## Запустить команду composer (make composer CMD="install")
-	$(COMPOSE) exec $(APP_SERVICE) composer $(CMD)
 
 migrate: ## Запустить миграции
 	$(COMPOSE) exec $(APP_SERVICE) php artisan migrate
@@ -238,13 +258,24 @@ tinker: ## Запустить Laravel Tinker
 test-php: ## Запустить тесты PHP (PHPUnit)
 	$(COMPOSE) exec $(APP_SERVICE) php artisan test
 
+test-coverage: ## Запустить тесты с покрытием кода
+	$(COMPOSE) exec $(APP_SERVICE) php artisan test --coverage
+
 # --- RoadRunner ---
 
-rr-reload: ## Перезагрузить воркеры RoadRunner (без перезапуска контейнера)
-	$(COMPOSE) exec $(APP_SERVICE) php artisan octane:reload
+rr-reload: ## Перезагрузить воркеры RoadRunner
+	$(COMPOSE) exec $(APP_SERVICE) rr reset
+
+rr-health: ## Проверить health RoadRunner
+	@docker compose exec $(APP_SERVICE) sh -lc 'curl -i $(RR_HEALTH_URL)'
 
 rr-status: ## Показать статус воркеров RoadRunner
-	$(COMPOSE) exec $(APP_SERVICE) php artisan octane:status
+	@docker compose exec $(APP_SERVICE) sh -lc 'if curl -sf $(RR_HEALTH_URL) >/dev/null; then \
+		printf "$(GREEN)✓ RoadRunner is running$(NC)\n"; \
+	else \
+		printf "$(RED)✗ RoadRunner is not running$(NC)\n"; \
+		exit 1; \
+	fi'
 
 # --- Утилиты ---
 
@@ -272,7 +303,6 @@ info: ## Показать информацию о проекте
 	@echo ""
 	@echo "$(GREEN)Порты:$(NC)"
 	@echo "  • $(APP_PORT) - RoadRunner (HTTP Server)"
-	@echo "  • 2114 - RoadRunner Health Check"
 	@echo "  • 5173 - Vite HMR (dev only)"
 	@echo "  • 5432 - PostgreSQL (dev forwarded)"
 	@echo "  • 6379 - Redis (dev forwarded)"
@@ -280,12 +310,24 @@ info: ## Показать информацию о проекте
 
 validate: ## Проверить доступность сервисов по HTTP
 	@echo "$(YELLOW)Проверка работы сервисов...$(NC)"
+	@echo ""
+
 	@echo -n "RoadRunner (http://localhost:$(APP_PORT)): "
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost:$(APP_PORT) && echo " $(GREEN)✓$(NC)" || echo " $(RED)✗$(NC)"
-	@echo -n "Health Check (http://localhost:2114): "
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost:2114/health?plugin=http && echo " $(GREEN)✓$(NC)" || echo " $(RED)✗$(NC)"
+	@curl -sf -o /dev/null -w "%{http_code}" http://localhost:$(APP_PORT) \
+		&& echo " $(GREEN)✓$(NC)" \
+		|| echo " $(RED)✗$(NC)"
+
+	@echo -n "Health Check (RoadRunner inside container): "
+	@docker compose exec $(APP_SERVICE) sh -lc 'curl -sf $(RR_HEALTH_URL) >/dev/null' \
+    	&& echo " $(GREEN)✓$(NC)" \
+    	|| echo " $(RED)✗$(NC)"
+
 	@echo -n "pgAdmin (http://localhost:8080): "
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 && echo " $(GREEN)✓$(NC)" || echo " $(RED)✗$(NC)"
+	@curl -sf -o /dev/null -w "%{http_code}" http://localhost:8080 \
+		&& echo " $(GREEN)✓$(NC)" \
+		|| echo " $(RED)✗$(NC)"
+
+	@echo ""
 	@echo "$(YELLOW)Статус контейнеров:$(NC)"
 	@$(COMPOSE) ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
